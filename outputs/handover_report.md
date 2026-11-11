@@ -2,7 +2,7 @@
 
 **Report date (latest shift log):** 2026-11-08
 **Coverage:** 28 days, NCM-1, NCM-2, Day / Swing / Night shifts
-**Overall OEE (period average):** 77.9%
+**Overall OEE (period, volume-weighted):** 77.9% (Availability 93.6%, Performance 85.1%, Quality 97.9%)
 
 ## OEE — latest day, by line and shift
 
