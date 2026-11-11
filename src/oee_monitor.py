@@ -121,8 +121,10 @@ def downtime_pareto(df: pd.DataFrame) -> pd.DataFrame:
         .sort_values("downtime_minutes", ascending=False)
     )
     total = pareto["downtime_minutes"].sum()
-    pareto["share_pct"] = (pareto["downtime_minutes"] / total * 100).round(1)
-    pareto["cum_pct"] = pareto["share_pct"].cumsum().round(1)
+    # Keep full precision internally: cumulative % is cumulative
+    # downtime minutes / total minutes, rounded only for display.
+    pareto["share_pct"] = pareto["downtime_minutes"] / total * 100
+    pareto["cum_pct"] = pareto["downtime_minutes"].cumsum() / total * 100
     return pareto
 
 
