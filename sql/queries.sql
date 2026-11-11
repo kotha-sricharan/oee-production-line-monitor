@@ -37,15 +37,17 @@ ORDER BY downtime_minutes DESC;
 --    Availability = operating / planned
 --    Performance  = (ideal cycle * units) / operating seconds, capped at 1.0
 --    Quality      = good / produced
+--    Ratios are computed from the day's summed inputs (volume-weighted),
+--    not averaged from per-run percentages.
 SELECT
     r.run_date AS day,
-    ROUND(AVG(1.0 * (r.planned_minutes - r.downtime_minutes) / r.planned_minutes), 4) AS availability,
-    ROUND(AVG(MIN(1.0, (l.ideal_cycle_seconds * r.units_produced) / ((r.planned_minutes - r.downtime_minutes) * 60.0))), 4) AS performance,
-    ROUND(AVG(1.0 * r.good_units / r.units_produced), 4) AS quality,
+    ROUND(1.0 * SUM(r.planned_minutes - r.downtime_minutes) / SUM(r.planned_minutes), 4) AS availability,
+    ROUND(MIN(1.0, SUM(l.ideal_cycle_seconds * r.units_produced) / (SUM(r.planned_minutes - r.downtime_minutes) * 60.0)), 4) AS performance,
+    ROUND(1.0 * SUM(r.good_units) / SUM(r.units_produced), 4) AS quality,
     ROUND(
-        AVG(1.0 * (r.planned_minutes - r.downtime_minutes) / r.planned_minutes)
-        * AVG(MIN(1.0, (l.ideal_cycle_seconds * r.units_produced) / ((r.planned_minutes - r.downtime_minutes) * 60.0)))
-        * AVG(1.0 * r.good_units / r.units_produced), 4
+        (1.0 * SUM(r.planned_minutes - r.downtime_minutes) / SUM(r.planned_minutes))
+        * MIN(1.0, SUM(l.ideal_cycle_seconds * r.units_produced) / (SUM(r.planned_minutes - r.downtime_minutes) * 60.0))
+        * (1.0 * SUM(r.good_units) / SUM(r.units_produced)), 4
     ) AS oee
 FROM production_runs r
 JOIN lines l ON l.line_id = r.line_id
