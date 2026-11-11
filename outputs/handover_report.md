@@ -22,8 +22,8 @@
 | 1 | Machine Breakdown | 2012 | 38.8% | 38.8% |
 | 2 | Changeover | 1207 | 23.3% | 62.1% |
 | 3 | Quality Hold | 499 | 9.6% | 71.7% |
-| 4 | Material Shortage | 478 | 9.2% | 80.9% |
-| 5 | Planned Maintenance | 390 | 7.5% | 88.4% |
+| 4 | Material Shortage | 478 | 9.2% | 81.0% |
+| 5 | Planned Maintenance | 390 | 7.5% | 88.5% |
 
 ## Recommended actions for the incoming shift
 
