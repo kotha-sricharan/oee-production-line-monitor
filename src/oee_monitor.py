@@ -59,32 +59,57 @@ def load_shift_logs(path: Path) -> pd.DataFrame:
 
 
 def compute_oee(df: pd.DataFrame) -> pd.DataFrame:
-    """Add OEE components per row and aggregate per line/shift/day."""
+    """Add OEE components per row and aggregate per line/shift/day.
+
+    The grouped ratios are recomputed from the summed inputs
+    (volume-weighted), not averaged from the per-row percentages:
+    a high-volume shift must count more than a low-volume one.
+    """
     df = df.copy()
     df["operating_minutes"] = df["planned_minutes"] - df["downtime_minutes"]
     df["availability"] = df["operating_minutes"] / df["planned_minutes"]
-    df["performance"] = (df["ideal_cycle_seconds"] * df["units_produced"]) / (
-        df["operating_minutes"] * 60
-    )
+    df["ideal_seconds"] = df["ideal_cycle_seconds"] * df["units_produced"]
+    df["performance"] = df["ideal_seconds"] / (df["operating_minutes"] * 60)
     df["performance"] = df["performance"].clip(upper=1.0)
     df["quality"] = df["good_units"] / df["units_produced"]
     df["oee"] = df["availability"] * df["performance"] * df["quality"]
 
-    summary = (
+    grouped = (
         df.groupby(["date", "line", "shift"], as_index=False)
         .agg(
             planned_minutes=("planned_minutes", "sum"),
             downtime_minutes=("downtime_minutes", "sum"),
+            operating_minutes=("operating_minutes", "sum"),
+            ideal_seconds=("ideal_seconds", "sum"),
             units_produced=("units_produced", "sum"),
             good_units=("good_units", "sum"),
-            availability=("availability", "mean"),
-            performance=("performance", "mean"),
-            quality=("quality", "mean"),
-            oee=("oee", "mean"),
         )
         .sort_values(["date", "line", "shift"])
     )
-    return df, summary
+    grouped["availability"] = grouped["operating_minutes"] / grouped["planned_minutes"]
+    grouped["performance"] = (
+        grouped["ideal_seconds"] / (grouped["operating_minutes"] * 60)
+    ).clip(upper=1.0)
+    grouped["quality"] = grouped["good_units"] / grouped["units_produced"]
+    grouped["oee"] = (
+        grouped["availability"] * grouped["performance"] * grouped["quality"]
+    )
+    return df, grouped
+
+
+def overall_oee(df: pd.DataFrame) -> tuple[float, float, float, float]:
+    """Period-wide (availability, performance, quality, OEE).
+
+    Recomputed from the summed inputs across the whole period, so
+    shifts contribute in proportion to their production volume.
+    """
+    planned = df["planned_minutes"].sum()
+    operating = (df["planned_minutes"] - df["downtime_minutes"]).sum()
+    ideal_seconds = (df["ideal_cycle_seconds"] * df["units_produced"]).sum()
+    availability = operating / planned
+    performance = min(1.0, ideal_seconds / (operating * 60))
+    quality = df["good_units"].sum() / df["units_produced"].sum()
+    return availability, performance, quality, availability * performance * quality
 
 
 def downtime_pareto(df: pd.DataFrame) -> pd.DataFrame:
@@ -166,7 +191,7 @@ def write_handover_report(
     latest_date = summary["date"].max()
     latest = summary[summary["date"] == latest_date]
     worst_reason = pareto.iloc[0]["downtime_reason"] if not pareto.empty else "n/a"
-    overall_oee = summary["oee"].mean()
+    avail, perf, qual, overall = overall_oee(df)
 
     lines = []
     lines.append("# Shift Handover Report")
@@ -177,7 +202,11 @@ def write_handover_report(
         f"{', '.join(sorted(summary['line'].unique()))}, "
         "Day / Swing / Night shifts"
     )
-    lines.append(f"**Overall OEE (period average):** {overall_oee:.1%}")
+    lines.append(
+        f"**Overall OEE (period, volume-weighted):** {overall:.1%} "
+        f"(Availability {avail:.1%}, Performance {perf:.1%}, "
+        f"Quality {qual:.1%})"
+    )
     lines.append("")
     lines.append("## OEE — latest day, by line and shift")
     lines.append("")
@@ -239,13 +268,14 @@ def main(argv=None) -> int:
     report_path = out_dir / "handover_report.md"
     write_handover_report(df, summary, pareto, report_path)
 
+    avail, perf, qual, overall = overall_oee(df)
     print(f"Rows loaded:            {len(df)}")
     print(f"Date range:             {df['date'].min().date()} to {df['date'].max().date()}")
     print(f"Lines:                  {', '.join(sorted(df['line'].unique()))}")
-    print(f"Overall OEE:            {summary['oee'].mean():.1%}")
-    print(f"Overall Availability:   {summary['availability'].mean():.1%}")
-    print(f"Overall Performance:    {summary['performance'].mean():.1%}")
-    print(f"Overall Quality:        {summary['quality'].mean():.1%}")
+    print(f"Overall OEE:            {overall:.1%} (volume-weighted)")
+    print(f"Overall Availability:   {avail:.1%}")
+    print(f"Overall Performance:    {perf:.1%}")
+    print(f"Overall Quality:        {qual:.1%}")
     print(f"Total downtime:         {int(df['downtime_minutes'].sum())} minutes")
     print("Top downtime reasons:")
     for _, r in pareto.head(3).iterrows():
